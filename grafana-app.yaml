@@ -1,0 +1,84 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: grafana
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: grafana
+    targetRevision: 8.*        # pin if you want e.g. 8.6.0
+    helm:
+      values: |
+        replicas: 1
+        persistence:
+          enabled: true
+          size: 10Gi
+          accessModes: ["ReadWriteOnce"]
+
+        admin:
+          existingSecret: grafana-admin
+          userKey: admin-user
+          passwordKey: admin-password
+
+        service:
+          type: ClusterIP
+          port: 3000
+
+        ingress:
+          enabled: true
+          ingressClassName: nginx
+          hosts:
+            - grafana.example.com   # <-- change me
+          tls:
+            - secretName: grafana-tls
+              hosts:
+                - grafana.example.com
+
+        # Disable anonymous + signups
+        env:
+          GF_AUTH_ANONYMOUS_ENABLED: "false"
+          GF_USERS_ALLOW_SIGN_UP: "false"
+
+        # If you’ll need custom unsigned plugins later
+        grafana.ini:
+          plugins:
+            allow_loading_unsigned_plugins: grafana-scroll-helper
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # Optional: preload a Prometheus datasource (adjust URL to yours or delete this block)
+        datasources:
+          datasources.yaml:
+            apiVersion: 1
+            datasources:
+              - name: Prometheus
+                type: prometheus
+                access: proxy
+                url: http://prometheus-kube-prometheus-prometheus.monitoring:9090
+                isDefault: true
+
+        # Optional: load dashboards from ConfigMaps/Secrets (GitOps-friendly)
+        sidecar:
+          dashboards:
+            enabled: true
+            label: grafana_dashboard
+          datasources:
+            enabled: true
+            label: grafana_datasource
